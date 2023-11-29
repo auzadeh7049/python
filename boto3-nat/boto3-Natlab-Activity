@@ -1,0 +1,164 @@
+import boto3
+aws_region='ca-central-1'
+
+# initialize boto3 ec2 client in the ca-central-1 region
+ec2_client = boto3.client('ec2', region_name=aws_region)
+
+
+# use the ec2 client's describe_vpcs method to retreive the VpcId
+vpcs_info=ec2_client.describe_vpcs()
+vpc_id=vpcs_info['Vpc'][ ... ]
+
+
+# use the ec2 client's create_security_group method to create a security group for the nat ec2 instance
+rdp_sec_grp=ec2_client.create_security_group(
+GroupName='priv_port_forward',
+Description='Security Group allowing public inbound access over ssh and rdp',
+VpcId= ... ,
+TagSpecifications=[{
+'ResourceType': 'security-group',
+'Tags': [{ "Key": 'Name', "Value": 'priv_port_forward' }] }] )
+
+
+# use the ec2 client's create_security_group method to create a security group for the windows ec2 instance
+rdp_sec_grp=ec2_client.create_security_group(
+GroupName='pub_inbound_ssh_rdp',
+Description='Security Group allowing public inbound access over ssh and rdp',
+VpcId= ... ,
+TagSpecifications=[{
+'ResourceType': 'security-group',
+'Tags': [{ "Key": 'Name', "Value": 'pub_inbound_ssh_rdp' }] }] )
+
+
+
+
+# use the ec2 client's describe_security_group method to retreive the GroupId of the both Security Groups
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/client/describe_security_groups.html
+sec_group_info=ec2_client ... ,
+pub_group_id= ...
+priv_group_id= ...
+
+
+# create inbound rules for the private security group allowing rdp
+ec2_client.authorize_security_group_ingress(
+GroupId= ... ,
+IpPermissions=[
+{
+'FromPort': 3389,
+'IpProtocol': 'tcp',
+'IpRanges': [{
+'CidrIp': '0.0.0.0/0',
+'Description': 'RDP access port forward' }],
+'ToPort': 3389 }] )
+
+
+# create inbound rules for the public security group allowing ssh and rdp over 9833
+ec2_client.authorize_security_group_ingress(
+GroupId= ... ,
+IpPermissions=[
+{
+'FromPort': 22,
+'IpProtocol': 'tcp',
+'IpRanges': [{
+'CidrIp': '0.0.0.0/0',
+'Description': 'SSH access from anywhere' }],
+'ToPort': 22 },
+{
+'FromPort': 9833,
+'IpProtocol': 'tcp',
+'IpRanges': [{
+'CidrIp': '0.0.0.0/0',
+'Description': 'RDP access from anywhere' }],
+'ToPort': 9833 }] )
+
+
+# use the ec2 client's describe_subnet method to retreive the SubnetId for each subnet
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/client/describe_subnets.html
+subnets_info=ec2_client ...
+pub_subnet_id= ...
+priv_subnet_id= ...
+
+
+
+
+""" use the ec2 client's run_instance method to create a windows instance on the private subnet
+ami_id for the aws windows is ami-0f3e6862466326e52
+https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/client/run_instances.html
+"""
+ec2_win=ec2_client ... (
+ImageId= ... ,
+InstanceType='t2.micro',
+MinCount=1,
+MaxCount=1,
+SecurityGroupIds= ... ,
+Placement={'AvailabilityZone': 'ca-central-1b'},
+SubnetId= ... ,
+UserData=port_forward
+TagSpecifications=[{ 'ResourceType': 'instance', 'Tags': [{ "Key": "Name", "Value": 'pyboto3_ec2_nat' }] }]
+)
+
+
+# retrieve the private ip of the windows ec2 instance
+ec2_win_ip=[ ... ]
+
+
+# use the ec2 client's describe_instances method to check the status of our
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/client/describe_instances.html
+instances_info=ec2_client ...
+
+
+# create a short bash script to enable port forwarding on a linux machine
+port_forward="""#!/bin/bash
+sudo sed -i 's/net.ipv4.ip_forward = 0/net.ipv4.ip_forward = 1/g' /etc/sysctl.conf
+sudo iptables -t nat -A POSTROUTING -o eth0 -s 172.16.1.0/24 -j MASQUERADE
+sudo iptables -t nat -A PREROUTING -p tcp --dport 9833 -j DNAT --to-destination """ + ec2_win_ip
+
+
+""" use the ec2 client's run_instance method to create a nat instance on the public subnet
+ami_id for the aws nat instance is ami-0e9d1e46c539f526c
+https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/client/run_instances.html
+"""
+ec2_nat= ...(
+ImageId= ... ,
+InstanceType='t2.micro',
+MinCount=1,
+MaxCount=1,
+SecurityGroupIds= ... ,
+Placement={'AvailabilityZone': 'ca-central-1b'},
+SubnetId= ... ,
+UserData=port_forward
+TagSpecifications=[{ 'ResourceType': 'instance', 'Tags': [{ "Key": "Name", "Value": 'pyboto3_ec2_nat' }] }]
+)
+
+
+# use the ec2 client's describe_instances method to check the status of our
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/client/describe_instances.html
+instances_info=ec2_client ...
+
+
+#get nat instance id
+#get route table id
+
+
+#create route from main route table (private) to nat instance
+# create a default route to the internet gateway on the public subnet
+ec2_client.create_route(
+RouteTableId='rtb-01ae69722de4314fb',
+DestinationCidrBlock='0.0.0.0/0',
+InstanceId='i-08cc175ca63b39ea5')
+
+
+
+
+# test RDP to AWS ec2 instance on the private subnet
+
+
+
+
+
+
+
+
+
+
+
